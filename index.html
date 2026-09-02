@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#08070b" />
+    <meta name="description" content="Bize ait bir anı defteri." />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Anı Defterimiz</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Manrope:wght@200;300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <canvas id="sahne" aria-hidden="true"></canvas>
+
+    <!-- Kaydırma yüksekliğini belirleyen boşluk. Yüksekliği sahneye göre değişir. -->
+    <div id="kaydirma-alani" aria-hidden="true"></div>
+
+    <div id="atmosfer" aria-hidden="true">
+      <div id="vinyet"></div>
+      <div id="grain"></div>
+    </div>
+
+    <main id="ui-katmani"></main>
+
+    <noscript>
+      <div class="uyari">
+        <p>Bu anı defterini görebilmek için JavaScript'i açman gerekiyor.</p>
+      </div>
+    </noscript>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
