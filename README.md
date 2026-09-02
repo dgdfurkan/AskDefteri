@@ -78,12 +78,22 @@ Bütün metinler, renkler, şifreler ve zamanlamalar tek dosyada: **`src/config/
 - `kaydirma` — bölümlerin kaydırma uzunlukları.
 - `kalite` — masaüstü ve mobil için parçacık sayısı, gölge çözünürlüğü, piksel oranı.
 
-## GitHub Pages'e alma
+## Yayın
 
-Repo GitHub'a gönderildikten sonra `Settings > Pages > Build and deployment`
-bölümünde kaynağı **GitHub Actions** yap. `.github/workflows/deploy.yml`
-her `main` push'unda derleyip yayına alır. Vite `base: './'` ile derlendiği için
-repo alt dizininde de sorunsuz çalışır.
+Site şu adreste: **https://dgdfurkan.github.io/AskDefteri/**
+
+Değişiklikleri yayına almak için tek komut:
+
+```bash
+npm run deploy
+```
+
+Bu komut projeyi derler ve `dist` klasörünü `gh-pages` dalına gönderir; GitHub Pages
+o daldan yayın yapar. Kaynak kod `main` dalında durur, ikisi karışmaz.
+
+Otomatik yayın (her `main` push'unda kendiliğinden derleme) istersen bir kez
+`gh auth refresh -s workflow` çalıştırman yeterli; sonrasında GitHub Actions
+akışını ekleyebiliriz.
 
 ## Klasörler
 
@@ -96,7 +106,7 @@ src/
   gallery/     3B defter, sayfa fotoğrafı ve defter sahnesi
   animation/   hikâye yönetmeni ve yumuşatma fonksiyonları
   ui/          kilit ekranı, hikâye altyazıları, defter arayüzü
-scripts/       fotoğraf hazırlama betiği
+scripts/       fotoğraf hazırlama ve yayın betikleri
 fotolar/       kaynak fotoğraflar (web sürümleri buradan üretilir)
 ses/           kaynak müzik dosyası
 public/        yayınlanan fotoğraflar ve müzik
