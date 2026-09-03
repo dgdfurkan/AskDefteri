@@ -9,6 +9,8 @@ export const SAYFA_G = 2.15;
 export const SAYFA_Y = 2.92;
 /** Defterin toplam kâğıt kalınlığı; yaprak başına düşen pay bundan hesaplanır. */
 const TOPLAM_KALINLIK = 0.16;
+/** Arka kapağın defter açıkken durduğu derinlik */
+const ARKA_KAPAK_Z = -0.03;
 /** Yaprakların döndüğü ilerleme aralığı */
 const BAS = 0.012;
 const SON = 0.93;
@@ -50,6 +52,7 @@ export class Notebook {
   private kapanisYaprak: Yaprak | null = null;
   private kapanisT = 0;
   private ortalamaAdim = 0.01;
+  private arkaKapak = new THREE.Group();
   private atilanlar: Array<THREE.BufferGeometry | THREE.Material> = [];
 
   constructor(golgeler: boolean) {
@@ -149,15 +152,29 @@ export class Notebook {
     this.sagYigin.position.set(SAYFA_G / 2, 0, -0.06);
     this.grup.add(this.solYigin, this.sagYigin);
 
-    // Arka kapak: her zaman altta durur
-    const arkaKapak = new THREE.Mesh(
-      new THREE.BoxGeometry(SAYFA_G + 0.06, SAYFA_Y + 0.06, 0.05),
-      kapakArkaMat
-    );
-    arkaKapak.position.set(SAYFA_G / 2, 0, -0.14);
-    arkaKapak.receiveShadow = golgeler;
-    this.grup.add(arkaKapak);
-    this.atilanlar.push(arkaKapak.geometry);
+    // Arka kapak: okurken en altta durur, defter bitince sırttan dönerek kapanır.
+    // Kameraya bakan yüzü açıkken astar, kapanınca kapağın dış yüzüdür.
+    const disKapakMat = new THREE.MeshStandardMaterial({
+      map: kapakDokusu('', ''),
+      roughness: 0.72,
+      metalness: 0.05
+    });
+    this.atilanlar.push(disKapakMat);
+    const arkaKapakGeo = new THREE.BoxGeometry(SAYFA_G + 0.06, SAYFA_Y + 0.06, 0.05);
+    const arkaKapakMesh = new THREE.Mesh(arkaKapakGeo, [
+      kapakArkaMat,
+      kapakArkaMat,
+      kapakArkaMat,
+      kapakArkaMat,
+      astarMat,
+      disKapakMat
+    ]);
+    arkaKapakMesh.position.set(SAYFA_G / 2, 0, 0);
+    arkaKapakMesh.receiveShadow = golgeler;
+    this.arkaKapak.add(arkaKapakMesh);
+    this.arkaKapak.position.z = ARKA_KAPAK_Z;
+    this.grup.add(this.arkaKapak);
+    this.atilanlar.push(arkaKapakGeo);
 
     this.setIlerleme(0);
   }
@@ -305,31 +322,32 @@ export class Notebook {
     const n = this.yaprakSayisi;
     const kapanma = this.kapanmaIlerlemesi(p);
 
-    // Son bölüm: çevrilmiş yaprakların tamamı kapakla birlikte geri kapanır.
-    // Yarıya kadar en üstteki sayfanın arkası, yarıdan sonra kapağın dış yüzü
-    // kameraya bakar; tam dik açıda değiştiği için geçiş görünmez.
+    // Son bölüm: bütün yapraklar çevrilmiş durumda, sağda yalnızca arka kapak
+    // kalmıştır. Arka kapak sırttan sola dönerek defteri kapatır; kapandığında
+    // kameraya bakan yüz kapağın dış yüzüdür.
     if (kapanma > 0.001) {
-      const aci = -Math.PI * (1 - kapanma);
-      const kapakGoster = kapanma > 0.5;
-      const gosterilen = kapakGoster ? this.yapraklar[0] : this.yapraklar[n - 1];
+      const son = this.yapraklar[n - 1];
       for (const y of this.yapraklar) y.pivot.visible = false;
-      gosterilen.pivot.visible = true;
-      gosterilen.pivot.rotation.set(0, aci, 0);
-      gosterilen.pivot.position.z = TOPLAM_KALINLIK + 0.03;
-      gosterilen.onYuz.visible = kapakGoster;
-      gosterilen.arkaYuz.visible = !kapakGoster;
+      son.pivot.visible = kapanma < 0.6;
+      son.pivot.rotation.set(0, -Math.PI, 0);
+      son.pivot.position.z = TOPLAM_KALINLIK;
+      son.onYuz.visible = false;
+      son.arkaYuz.visible = true;
 
-      const sol = TOPLAM_KALINLIK * (1 - kapanma);
-      const sag = TOPLAM_KALINLIK * kapanma;
-      this.solYigin.visible = kapanma < 0.75;
-      this.solYigin.scale.z = Math.max(0.02, sol) / 0.1;
-      this.solYigin.position.z = sol / 2 - 0.11;
-      this.sagYigin.visible = true;
-      this.sagYigin.scale.z = Math.max(0.02, sag) / 0.1;
-      this.sagYigin.position.z = sag / 2 - 0.11;
+      this.arkaKapak.rotation.y = -Math.PI * kapanma;
+      this.arkaKapak.position.z =
+        lerp(ARKA_KAPAK_Z, TOPLAM_KALINLIK + 0.045, kapanma) + Math.sin(kapanma * Math.PI) * 0.07;
+
+      this.solYigin.visible = true;
+      this.solYigin.scale.z = TOPLAM_KALINLIK / 0.1;
+      this.solYigin.position.z = TOPLAM_KALINLIK / 2 - 0.11;
+      this.sagYigin.visible = false;
       this.sirt.visible = true;
       return;
     }
+
+    this.arkaKapak.rotation.y = 0;
+    this.arkaKapak.position.z = ARKA_KAPAK_Z;
 
     // Yalnızca açık sayfayı oluşturan birkaç yaprak çizilir; gerisini
     // sol ve sağ yığın blokları temsil eder. Çizim çağrısı böylece sabit kalır.
@@ -382,11 +400,10 @@ export class Notebook {
     return smootherstep(clamp01((p - KAPANMA_BAS) / (KAPANMA_SON - KAPANMA_BAS)));
   }
 
-  /** Kapağın açıklık oranı: sonda kapanırken tekrar sıfıra iner. */
+  /** Ön kapağın açılma oranı. */
   kapakAcilmasi(p: number): number {
     const y = this.yapraklar[0];
-    const acilis = easeInOutCubic(clamp01((p - y.p0) / (y.p1 - y.p0)));
-    return acilis * (1 - this.kapanmaIlerlemesi(p));
+    return easeInOutCubic(clamp01((p - y.p0) / (y.p1 - y.p0)));
   }
 
   /** Verilen ilerlemede sağ sayfadaki (odaktaki) fotoğrafın sırası. */

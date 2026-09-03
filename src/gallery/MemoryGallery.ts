@@ -148,12 +148,15 @@ export class MemoryGallery {
     const az = this.ekran.azHareket;
     const vurgu = this.defter.cevirmeVurgusu(p);
     const kapakT = this.defter.kapakAcilmasi(p);
+    const kapanma = this.defter.kapanmaIlerlemesi(p);
+    // Defter açıkken iki sayfa, kapalıyken tek kapak kadraja sığar.
+    const acikOran = kapakT * (1 - kapanma);
 
     const yariFov = THREE.MathUtils.degToRad(this.kamera.fov) / 2;
     // Kadraja sığması gereken ölçüler (paylar dâhil): dar ekranda tek sayfa,
     // geniş ekranda açık iki sayfa. Uzaklık ikisinden büyüğüne göre seçilir.
     const acikGenislik = mobil ? SAYFA_G * 1.1 : SAYFA_G * 2 * 1.06;
-    const hedefGenislik = lerp(SAYFA_G * 1.18, acikGenislik, kapakT);
+    const hedefGenislik = lerp(SAYFA_G * 1.18, acikGenislik, acikOran);
     const hedefYukseklik = SAYFA_Y * 1.19;
     const zYukseklik = hedefYukseklik / 2 / Math.tan(yariFov);
     const zGenislik = hedefGenislik / 2 / (Math.tan(yariFov) * this.kamera.aspect);
@@ -162,8 +165,9 @@ export class MemoryGallery {
 
     const odak = this.defter.odakX(p);
     const surus = mobil ? odak * 0.92 : odak * 0.18;
-    const x = lerp(SAYFA_G / 2, surus, kapakT);
-    const y = lerp(0.24, 0.06, kapakT);
+    // Başta kapak sağda, defter açıkken ortada, sonda kapanan kapak solda kalır.
+    const x = lerp(lerp(SAYFA_G / 2, surus, kapakT), -SAYFA_G / 2, kapanma);
+    const y = lerp(0.24, 0.06, acikOran);
 
     const salinim = az ? 0 : 1;
     this.kamera.position.set(
@@ -171,7 +175,8 @@ export class MemoryGallery {
       y + Math.sin(zaman * 0.17) * 0.03 * salinim,
       z
     );
-    this.gecici.set(lerp(SAYFA_G / 2, mobil ? odak * 0.96 : odak * 0.16, kapakT), -0.02, 0);
+    const bakX = lerp(SAYFA_G / 2, mobil ? odak * 0.96 : odak * 0.16, kapakT);
+    this.gecici.set(lerp(bakX, -SAYFA_G / 2, kapanma), -0.02, 0);
     this.kamera.lookAt(this.gecici);
   }
 
