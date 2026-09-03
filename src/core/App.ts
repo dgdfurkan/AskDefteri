@@ -103,7 +103,7 @@ export class App {
     this.hikayeUI.defteriAc = () => this.gecisYap('defter');
 
     this.defterUI.kapatIstendi = () => this.defterSahne?.kapat();
-    this.defterUI.hikayeTekrar = () => this.gecisYap('hikaye');
+    this.defterUI.hikayeTekrar = () => this.basaDon();
 
     // Karta dokunma: kaydırma ile karıştırmamak için kısa ve yerinde dokunuş şartı.
     const el = this.cizer.canvas;
@@ -213,6 +213,7 @@ export class App {
           this.defterUI.detayGoster(bilgi);
           this.kaydirma.kilitle(bilgi !== null);
         };
+        this.defterSahne.kalemSesi = () => this.ses.kalem();
       }
       this.kaydirma.kilitle(false);
       this.kaydirma.uzunlukAyarla(
@@ -246,6 +247,17 @@ export class App {
       this.sonKayitP = oran;
     }
     if (!animasyonlu) this.kaydirma.anindaOturt();
+  }
+
+  /** Defterin başına kısa bir sönümle döner; uzun kaydırma beklenmez. */
+  private basaDon(): void {
+    this.gecis.classList.add('kapali');
+    window.setTimeout(() => {
+      window.scrollTo(0, 0);
+      this.kaydirma.anindaOturt();
+      this.sonKayitP = 0;
+      window.setTimeout(() => this.gecis.classList.remove('kapali'), 80);
+    }, 500);
   }
 
   /** İki asama arasında sıcak bir sönümle geçiş. */
@@ -291,7 +303,7 @@ export class App {
     } else if (this.asama === 'defter' && this.defterSahne) {
       this.defterSahne.guncelle(p, dt, this.zaman);
       const aktif = this.defterSahne.aktifSira(p);
-      this.defterUI.guncelle(p, aktif, memories[aktif]?.yilYazisi ?? '');
+      this.defterUI.guncelle(p, aktif, memories[aktif]?.yilYazisi ?? '', this.defterSahne.kapanisSonrasi(p));
       this.cizer.ciz(this.defterSahne.sahne, this.defterSahne.kamera);
     }
     this.konumuKaydet(p);
@@ -322,7 +334,7 @@ export class App {
     } else if (asama === 'defter' && this.defterSahne) {
       this.defterSahne.guncelle(p, 0.016, zaman);
       const aktif = this.defterSahne.aktifSira(p);
-      this.defterUI.guncelle(p, aktif, memories[aktif]?.yilYazisi ?? '');
+      this.defterUI.guncelle(p, aktif, memories[aktif]?.yilYazisi ?? '', this.defterSahne.kapanisSonrasi(p));
       this.cizer.ciz(this.defterSahne.sahne, this.defterSahne.kamera);
     }
   }

@@ -15,6 +15,21 @@ export class AudioManager {
   private zamanlayici = 0;
   private baglam: AudioContext | null = null;
 
+  /** Web Audio bağlamını ilk kullanımda açar. */
+  private baglamAl(): AudioContext | null {
+    try {
+      const Ctx =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return null;
+      if (!this.baglam) this.baglam = new Ctx();
+      if (this.baglam.state === 'suspended') void this.baglam.resume();
+      return this.baglam;
+    } catch {
+      return null;
+    }
+  }
+
   constructor() {
     this.ses.src = varlikYolu('muzik/ani-defteri.mp3');
     this.ses.loop = true;
@@ -73,12 +88,9 @@ export class AudioManager {
    * vuruş ve üstüne düşük frekanslı bir tok ses.
    */
   tik(guc = 1): void {
+    const ctx = this.baglamAl();
+    if (!ctx) return;
     try {
-      const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!Ctx) return;
-      if (!this.baglam) this.baglam = new Ctx();
-      const ctx = this.baglam;
-      if (ctx.state === 'suspended') void ctx.resume();
       const t = ctx.currentTime;
 
       // Metalik klik: kısa gürültü patlaması, dar bant süzgeçten geçer.
@@ -113,6 +125,39 @@ export class AudioManager {
       osc.stop(t + 0.15);
     } catch {
       // Ses üretilemezse görsel akış aynen sürer.
+    }
+  }
+
+  /** Kalemin kâğıda sürtme sesi; her birkaç harfte bir çalınır. */
+  kalem(): void {
+    const ctx = this.baglamAl();
+    if (!ctx) return;
+    try {
+      const t = ctx.currentTime;
+      const uzunluk = Math.floor(ctx.sampleRate * 0.055);
+      const tampon = ctx.createBuffer(1, uzunluk, ctx.sampleRate);
+      const veri = tampon.getChannelData(0);
+      for (let i = 0; i < uzunluk; i++) {
+        const zarf = Math.sin((i / uzunluk) * Math.PI);
+        veri[i] = (Math.random() * 2 - 1) * zarf * zarf;
+      }
+      const kaynak = ctx.createBufferSource();
+      kaynak.buffer = tampon;
+      kaynak.playbackRate.value = 0.85 + Math.random() * 0.4;
+
+      const suzgec = ctx.createBiquadFilter();
+      suzgec.type = 'bandpass';
+      suzgec.frequency.value = 3800 + Math.random() * 2200;
+      suzgec.Q.value = 0.9;
+
+      const kazanc = ctx.createGain();
+      kazanc.gain.setValueAtTime(0.055 + Math.random() * 0.03, t);
+      kazanc.gain.exponentialRampToValueAtTime(0.0001, t + 0.075);
+
+      kaynak.connect(suzgec).connect(kazanc).connect(ctx.destination);
+      kaynak.start(t);
+    } catch {
+      // Ses üretilemezse yazı sessizce yazılır.
     }
   }
 

@@ -1,5 +1,6 @@
 // Kaynak fotoğrafları web için hazırlar: HEIC dönüşümü, boyutlandırma,
 // blur placeholder üretimi ve TypeScript manifest'i.
+// `fotolar/` altındaki tüm klasörler taranır.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,38 +13,80 @@ const MANIFEST = path.join(ROOT, 'src', 'config', 'memories.generated.ts');
 
 const AYLAR = {
   ocak: 1, şubat: 2, subat: 2, mart: 3, nisan: 4, mayıs: 5, mayis: 5, haziran: 6,
-  temmuz: 7, ağustos: 8, agustos: 8, eylül: 9, eylul: 9, ekim: 10, kasım: 11, kasim: 11, aralık: 12, aralik: 12
+  temmuz: 7, ağustos: 8, agustos: 8, eylül: 9, eylul: 9, ekim: 10, kasım: 11,
+  kasim: 11, aralık: 12, aralik: 12
 };
 
-function parseName(file) {
-  const base = file.replace(/\.[^.]+$/, '').toLowerCase();
-  const m = base.match(/^(\d{1,2})\s+([a-zçğıöşü]+)\s+(\d{4})(?:_(\d+))?$/);
+/** Rakam yerine yanlışlıkla yazılmış harfleri düzeltir: o->0, l->1 gibi. */
+const RAKAM_DUZELT = { o: '0', ö: '0', l: '1', i: '1', ı: '1', ﬂ: '1', s: '5', b: '6', g: '9' };
+
+function sayiyaCevir(parca) {
+  return [...parca].map((c) => RAKAM_DUZELT[c] ?? c).join('');
+}
+
+function parseName(dosya) {
+  // macOS dosya adlarını ayrışmış (NFD) verir; birleşik biçime çevir.
+  const base = dosya.normalize('NFC').replace(/\.[^.]+$/, '').toLowerCase().trim();
+  const duz = base.replace(/\s+/g, ' ');
+
+  let m = duz.match(/^(\S+)\s+([a-zçğıöşü]+)\s+(\S+?)(?:_(\d+))?$/);
   if (!m) return null;
+
+  const gun = Number(sayiyaCevir(m[1]));
   const ay = AYLAR[m[2]];
-  if (!ay) return null;
-  return { gun: +m[1], ay, yil: +m[3], sira: m[4] ? +m[4] : 1 };
+  const yil = Number(sayiyaCevir(m[3]));
+  if (!ay || !Number.isInteger(gun) || !Number.isInteger(yil)) return null;
+  if (gun < 1 || gun > 31 || yil < 1990 || yil > 2100) return null;
+
+  return { gun, ay, yil, sira: m[4] ? Number(m[4]) : 1 };
 }
 
 function run(cmd, args) {
   return execFileSync(cmd, args, { encoding: 'utf8', maxBuffer: 1 << 26 });
 }
 
+/** fotolar/ altındaki tüm görselleri toplar. */
+function gorselleriTara(dizin) {
+  const bulunan = [];
+  for (const giris of fs.readdirSync(dizin, { withFileTypes: true })) {
+    const tam = path.join(dizin, giris.name);
+    if (giris.isDirectory()) {
+      bulunan.push(...gorselleriTara(tam));
+    } else if (/\.(jpe?g|png|heic|heif)$/i.test(giris.name)) {
+      bulunan.push(tam);
+    }
+  }
+  return bulunan;
+}
+
 fs.mkdirSync(OUT_DIR, { recursive: true });
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'anilar-'));
 
-const files = fs.readdirSync(SRC_DIR).filter((f) => /\.(jpe?g|png|heic|heif)$/i.test(f));
+const dosyalar = gorselleriTara(SRC_DIR).sort();
 const items = [];
+const kullanilanId = new Set();
+const atlanan = [];
 
-for (const file of files) {
-  const meta = parseName(file);
+for (const tamYol of dosyalar) {
+  const dosya = path.basename(tamYol);
+  const meta = parseName(dosya);
   if (!meta) {
-    console.warn(`[atlandı] tarih okunamadı: ${file}`);
+    atlanan.push(path.relative(ROOT, tamYol));
     continue;
   }
-  const id = `${meta.yil}-${String(meta.ay).padStart(2, '0')}-${String(meta.gun).padStart(2, '0')}${meta.sira > 1 ? `-${meta.sira}` : ''}`;
-  let input = path.join(SRC_DIR, file);
 
-  if (/\.(heic|heif)$/i.test(file)) {
+  let id = `${meta.yil}-${String(meta.ay).padStart(2, '0')}-${String(meta.gun).padStart(2, '0')}`;
+  if (meta.sira > 1) id += `-${meta.sira}`;
+  // Aynı tarih farklı klasörlerde tekrar ederse sıradaki boş numarayı al.
+  let ek = meta.sira;
+  while (kullanilanId.has(id)) {
+    ek += 1;
+    id = `${meta.yil}-${String(meta.ay).padStart(2, '0')}-${String(meta.gun).padStart(2, '0')}-${ek}`;
+  }
+  kullanilanId.add(id);
+
+  let input = tamYol;
+  if (/\.(heic|heif)$/i.test(dosya)) {
     const conv = path.join(tmp, `${id}.jpg`);
     run('sips', ['-s', 'format', 'jpeg', input, '--out', conv]);
     input = conv;
@@ -59,12 +102,16 @@ for (const file of files) {
   const blur = `data:image/jpeg;base64,${fs.readFileSync(blurFile).toString('base64')}`;
 
   const dim = run('magick', ['identify', '-format', '%w %h', full]).trim().split(' ').map(Number);
-
-  items.push({ id, gun: meta.gun, ay: meta.ay, yil: meta.yil, sira: meta.sira, w: dim[0], h: dim[1], blur });
-  console.log(`[ok] ${file} -> ${id}.jpg (${dim[0]}x${dim[1]})`);
+  items.push({ id, gun: meta.gun, ay: meta.ay, yil: meta.yil, sira: ek, w: dim[0], h: dim[1], blur });
 }
 
 items.sort((a, b) => (a.yil - b.yil) || (a.ay - b.ay) || (a.gun - b.gun) || (a.sira - b.sira));
+
+// Artık kaynağı olmayan çıktıları temizle.
+const beklenen = new Set(items.flatMap((it) => [`${it.id}.jpg`, `${it.id}-s.jpg`]));
+for (const f of fs.readdirSync(OUT_DIR)) {
+  if (!beklenen.has(f)) fs.rmSync(path.join(OUT_DIR, f));
+}
 
 const body = items
   .map((it) => `  {
@@ -86,4 +133,8 @@ fs.writeFileSync(
 );
 
 fs.rmSync(tmp, { recursive: true, force: true });
-console.log(`\n${items.length} anı hazırlandı -> public/anilar, manifest: src/config/memories.generated.ts`);
+if (atlanan.length) {
+  console.log('\nTarihi okunamayan dosyalar:');
+  atlanan.forEach((a) => console.log('  ', a));
+}
+console.log(`\n${items.length} anı hazırlandı -> public/anilar`);

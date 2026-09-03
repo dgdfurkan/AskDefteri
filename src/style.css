@@ -356,25 +356,43 @@ html.kaydirma-kilitli body {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(11vh + env(safe-area-inset-bottom));
+  bottom: calc(9vh + env(safe-area-inset-bottom));
   display: grid;
   place-items: center;
   padding: 0 26px;
 }
 
+/* Sinema altyazısı: temiz sans, arkasında yumuşak koyu bir perde. */
 .altyazi-satir {
+  position: relative;
   grid-area: 1 / 1;
   margin: 0;
-  max-width: 22ch;
-  font-family: var(--serif);
-  font-size: clamp(1.25rem, 4.6vw, 1.85rem);
+  max-width: 26ch;
+  font-family: var(--sans);
+  font-size: clamp(1.05rem, 3.6vw, 1.5rem);
   font-weight: 300;
-  letter-spacing: 0.02em;
-  line-height: 1.35;
+  letter-spacing: 0.005em;
+  line-height: 1.42;
   text-align: center;
-  text-shadow: var(--golge);
+  color: #f6f2ee;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 2px 10px rgba(0, 0, 0, 0.65);
   opacity: 0;
   will-change: opacity, transform;
+}
+
+.altyazi-satir::before {
+  content: '';
+  position: absolute;
+  inset: -0.7em -2.2em;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(
+    58% 100% at 50% 50%,
+    rgba(0, 0, 0, 0.66) 0%,
+    rgba(0, 0, 0, 0.42) 46%,
+    rgba(0, 0, 0, 0) 76%
+  );
+  filter: blur(3px);
 }
 
 .final {
@@ -593,12 +611,11 @@ html.kaydirma-kilitli body {
 
 .kapanis {
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(84px + env(safe-area-inset-bottom));
   display: flex;
-  flex-direction: column;
-  align-items: center;
   justify-content: center;
-  gap: 10px;
   padding: 0 28px;
   text-align: center;
   opacity: 0;

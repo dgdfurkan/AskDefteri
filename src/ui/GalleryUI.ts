@@ -42,8 +42,6 @@ export class GalleryUI {
         <button class="detay-kapat" type="button" aria-label="Kapat">×</button>
       </div>
       <div class="kapanis">
-        <h2>${d.kapanisBaslik}</h2>
-        <p>${d.kapanisMetin}</p>
         <button class="tekrar" type="button">${d.tekrarIzle}</button>
       </div>
     `;
@@ -67,7 +65,7 @@ export class GalleryUI {
     );
   }
 
-  guncelle(p: number, aktifSira: number, aktifYil: string): void {
+  guncelle(p: number, aktifSira: number, aktifYil: string, kapanis: number): void {
     const ipucuOpaklik = clamp01(1 - p / 0.02);
     this.kapak.style.opacity = String(ipucuOpaklik);
     this.kapak.style.visibility = ipucuOpaklik > 0.01 ? 'visible' : 'hidden';
@@ -80,7 +78,7 @@ export class GalleryUI {
       this.ipucu.style.opacity = String(o);
     }
 
-    const k = clamp01((p - 0.965) / 0.025);
+    const k = clamp01(kapanis);
     this.kapanis.style.opacity = String(k);
     this.kapanis.style.visibility = k > 0.01 ? 'visible' : 'hidden';
     this.kapanis.style.pointerEvents = k > 0.7 ? 'auto' : 'none';

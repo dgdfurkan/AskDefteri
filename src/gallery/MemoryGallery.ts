@@ -25,6 +25,8 @@ export class MemoryGallery {
   readonly sahne = new THREE.Scene();
   readonly kamera: THREE.PerspectiveCamera;
   kartDegisti: ((bilgi: AcikKartBilgisi | null) => void) | null = null;
+  /** Kapanış yazısı yazılırken kalem sesi için. */
+  kalemSesi: (() => void) | null = null;
 
   private ekran: ResponsiveManager;
   private defter: Notebook;
@@ -46,6 +48,7 @@ export class MemoryGallery {
   private acilmaHedef = 0;
   private gecici = new THREE.Vector3();
   private sonP = 0;
+  private harfSayaci = 0;
 
   constructor(ekran: ResponsiveManager, renderer: THREE.WebGLRenderer) {
     this.ekran = ekran;
@@ -197,6 +200,16 @@ export class MemoryGallery {
       this.buyukMat.opacity = t;
     }
 
+    // Son sayfadaki yazı, sayfa görünürken kalem sesiyle birlikte yazılır.
+    const yeniHarf = this.defter.kapanisYaziyiSur(p, dt, this.ekran.azHareket);
+    if (yeniHarf > 0) {
+      this.harfSayaci += yeniHarf;
+      if (this.harfSayaci >= 2) {
+        this.harfSayaci = 0;
+        this.kalemSesi?.();
+      }
+    }
+
     this.zerre.guncelle(this.ekran.azHareket ? 0 : zaman, 0.24);
   }
 
@@ -271,6 +284,11 @@ export class MemoryGallery {
   /** O an odakta olan anının sırası. */
   aktifSira(p: number): number {
     return this.defter.odakSirasi(p);
+  }
+
+  /** Kapanış sayfası geçildi mi? "Başa dön" düğmesi buna göre belirir. */
+  kapanisSonrasi(p: number): number {
+    return this.defter.kapanisSonrasi(p);
   }
 
   boyutlandir(): void {

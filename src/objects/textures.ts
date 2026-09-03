@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { clamp01 } from '../animation/easing';
 
 /** Üretilen tüm dokular burada tutulur, sahne kapanırken toplu bırakılır. */
 const havuz: THREE.Texture[] = [];
@@ -681,5 +682,145 @@ export function kapakDokusu(baslik: string, altBaslik: string): THREE.CanvasText
     doku.needsUpdate = true;
   });
   return dokuKaydet(doku);
+}
+
+export interface YazanSatir {
+  metin: string;
+  fontBoyu: number;
+  renk?: string;
+  /** Bir önceki satırdan sonra bırakılacak ek boşluk (piksel) */
+  ustBosluk?: number;
+}
+
+/**
+ * Kalemle yazılıyormuş gibi harf harf beliren el yazısı dokusu.
+ * Yalnızca görünen harf sayısı değiştiğinde yeniden çizer; kare başına iş yapmaz.
+ */
+export class YazanElYazisi {
+  readonly doku: THREE.CanvasTexture;
+  private ctx: CanvasRenderingContext2D;
+  private g: number;
+  private y: number;
+  private satirlar: YazanSatir[];
+  private duzenCache: Array<{ metin: string; y: number; satir: YazanSatir }> | null = null;
+  private toplam = 0;
+  private sonGorunen = -1;
+
+  constructor(satirlar: YazanSatir[], genislik = 1200, yukseklik = 520) {
+    this.satirlar = satirlar;
+    this.g = genislik;
+    this.y = yukseklik;
+    const { c, ctx } = tuval(genislik, yukseklik);
+    this.ctx = ctx;
+    this.doku = new THREE.CanvasTexture(c);
+    this.doku.colorSpace = THREE.SRGBColorSpace;
+    this.doku.anisotropy = 8;
+    dokuKaydet(this.doku);
+    this.ciz(0);
+    void elYazisiHazir.then(() => {
+      this.duzenCache = null;
+      this.sonGorunen = -1;
+      this.ciz(this.sonOran);
+    });
+  }
+
+  private sonOran = 0;
+
+  private font(s: YazanSatir): string {
+    return `500 ${s.fontBoyu}px Caveat, "Segoe Script", "Bradley Hand", cursive`;
+  }
+
+  /** Satırları tuvale sığacak biçimde böler ve dikey yerleşimi hesaplar. */
+  private duzen(): Array<{ metin: string; y: number; satir: YazanSatir }> {
+    if (this.duzenCache) return this.duzenCache;
+    const enFazla = this.g * 0.94;
+    const parcalar: Array<{ metin: string; satir: YazanSatir; ilk: boolean }> = [];
+
+    for (const s of this.satirlar) {
+      this.ctx.font = this.font(s);
+      if (this.ctx.measureText(s.metin).width <= enFazla) {
+        parcalar.push({ metin: s.metin, satir: s, ilk: true });
+        continue;
+      }
+      let mevcut = '';
+      let ilk = true;
+      for (const kelime of s.metin.split(' ')) {
+        const deneme = mevcut ? `${mevcut} ${kelime}` : kelime;
+        if (this.ctx.measureText(deneme).width > enFazla && mevcut) {
+          parcalar.push({ metin: mevcut, satir: s, ilk });
+          ilk = false;
+          mevcut = kelime;
+        } else {
+          mevcut = deneme;
+        }
+      }
+      if (mevcut) parcalar.push({ metin: mevcut, satir: s, ilk });
+    }
+
+    // Dikey ortalama
+    let toplamYukseklik = 0;
+    parcalar.forEach((p2, i) => {
+      toplamYukseklik += p2.satir.fontBoyu * 1.18;
+      if (i > 0 && p2.ilk) toplamYukseklik += p2.satir.ustBosluk ?? 0;
+    });
+
+    let imlec = this.y / 2 - toplamYukseklik / 2;
+    const sonuc = parcalar.map((p2, i) => {
+      if (i > 0 && p2.ilk) imlec += p2.satir.ustBosluk ?? 0;
+      imlec += p2.satir.fontBoyu * 1.18;
+      return { metin: p2.metin, y: imlec - p2.satir.fontBoyu * 0.42, satir: p2.satir };
+    });
+
+    this.toplam = sonuc.reduce((t, p2) => t + p2.metin.length, 0);
+    this.duzenCache = sonuc;
+    return sonuc;
+  }
+
+  get toplamKarakter(): number {
+    this.duzen();
+    return this.toplam;
+  }
+
+  private ciz(oran: number): void {
+    const satirlar = this.duzen();
+    const gorunen = Math.round(clamp01(oran) * this.toplam);
+    if (gorunen === this.sonGorunen) return;
+    this.sonGorunen = gorunen;
+
+    this.ctx.clearRect(0, 0, this.g, this.y);
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'alphabetic';
+
+    let sayac = 0;
+    for (const s of satirlar) {
+      const kalan = gorunen - sayac;
+      if (kalan <= 0) break;
+      const metin = kalan >= s.metin.length ? s.metin : s.metin.slice(0, kalan);
+      sayac += s.metin.length;
+
+      this.ctx.save();
+      this.ctx.translate(this.g / 2, s.y);
+      this.ctx.rotate(-0.016);
+      this.ctx.font = this.font(s.satir);
+      // Mürekkebin kâğıda oturması: hafif kaymış soluk bir geçiş, üstüne asıl yazı
+      this.ctx.fillStyle = 'rgba(41, 52, 78, 0.3)';
+      this.ctx.fillText(metin, 1.5, 1.5);
+      this.ctx.fillStyle = s.satir.renk ?? 'rgba(31, 42, 68, 0.92)';
+      this.ctx.fillText(metin, 0, 0);
+      this.ctx.restore();
+    }
+    this.doku.needsUpdate = true;
+  }
+
+  /**
+   * Yazının ne kadarının göründüğünü ayarlar.
+   * Yeni beliren harf sayısını döndürür; ses buna göre tetiklenir.
+   */
+  ayarla(oran: number): number {
+    const onceki = this.sonGorunen < 0 ? 0 : this.sonGorunen;
+    this.sonOran = clamp01(oran);
+    this.ciz(this.sonOran);
+    return Math.max(0, this.sonGorunen - onceki);
+  }
 }
 

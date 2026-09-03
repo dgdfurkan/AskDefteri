@@ -36,8 +36,9 @@ export const storyConfig = {
     kaydirmaIpucu: 'Kaydır',
     /** Sahne ilerledikçe beliren altyazılar (p: 0-1 aralığında konum) */
     altyazilar: [
-      { p: 0.04, sure: 0.09, metin: 'O gün bir peronda bekliyordum.' },
-      { p: 0.2, sure: 0.1, metin: 'Tünelin sonunda bir ışık belirdi.' },
+      { p: 0.03, sure: 0.075, metin: 'İstanbul’a geliyordun…' },
+      { p: 0.115, sure: 0.075, metin: '…ve artık kavuşuyorduk.' },
+      { p: 0.21, sure: 0.095, metin: 'Tünelin sonunda bir ışık belirdi.' },
       { p: 0.42, sure: 0.08, metin: 'Ve tren yavaşladı.' },
       { p: 0.55, sure: 0.08, metin: 'Kapılar açıldı.' },
       { p: 0.66, sure: 0.08, metin: 'İçeriden sen çıktın.' },
@@ -52,9 +53,9 @@ export const storyConfig = {
     kapakUstu: 'ilk günden bugüne',
     kapakBaslik: 'Anı Defterimiz',
     kapakAlt: 'kaydır',
-    kapanisBaslik: 'Buradan sonrası boş.',
-    kapanisMetin: 'Seninle biriktireceğimiz güzel anılar için bekliyor.',
-    tekrarIzle: 'Hikâyeyi tekrar izle',
+    kapanisBaslik: 'Buradan sonrası şimdilik boş',
+    kapanisMetin: 'Birlikte biriktireceğimiz güzel anılar için bekliyor.',
+    tekrarIzle: 'Başa dön',
     detayIpucu: 'Fotoğrafa dokun',
     kaydirmaIpucu: 'Kaydır'
   },
@@ -115,8 +116,8 @@ export const storyConfig = {
   kaydirma: {
     hikayeVh: 780,
     /** Defterde her anı için eklenen yükseklik */
-    defterAniBasinaVh: 62,
-    defterEkVh: 240
+    defterAniBasinaVh: 46,
+    defterEkVh: 220
   },
 
   /** Kalite kademeleri */

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { storyConfig } from '../config/storyConfig';
 import { memories, type Memory } from '../config/memories';
 import { SayfaFotografi } from './SayfaFotografi';
-import { elYazisiDokusu, kagitDokusu, kapakDokusu } from '../objects/textures';
+import { YazanElYazisi, elYazisiDokusu, kagitDokusu, kapakDokusu } from '../objects/textures';
 import { clamp01, easeInOutCubic, lerp, smootherstep } from '../animation/easing';
 
 export const SAYFA_G = 2.15;
@@ -16,7 +16,10 @@ interface Yaprak {
   pivot: THREE.Group;
   onYuz: THREE.Group;
   arkaYuz: THREE.Group;
-  /** Bu yaprağın çevrilme aralığı */
+  /** Bu yaprağa ayrılan kaydırma aralığı */
+  bas: number;
+  son: number;
+  /** Yaprağın çevrilme aralığı */
   p0: number;
   p1: number;
   index: number;
@@ -39,6 +42,10 @@ export class Notebook {
   private solYigin: THREE.Mesh;
   private sagYigin: THREE.Mesh;
   private fotoYaprak = new Map<SayfaFotografi, Yaprak>();
+  private kapanisYazi: YazanElYazisi | null = null;
+  private kapanisYaprak: Yaprak | null = null;
+  private kapanisT = 0;
+  private ortalamaAdim = 0.01;
   private atilanlar: Array<THREE.BufferGeometry | THREE.Material> = [];
 
   constructor(golgeler: boolean) {
@@ -70,7 +77,22 @@ export class Notebook {
     const sayfaGeo = new THREE.PlaneGeometry(SAYFA_G, SAYFA_Y);
     this.atilanlar.push(sayfaGeo);
 
-    const adim = (SON - BAS) / this.yaprakSayisi;
+    // Yapraklara ağırlık verilir: kapanış sayfası, yazısı yazılabilsin diye
+    // normal bir sayfadan çok daha uzun durur.
+    const kapanisIndex = Math.floor((2 + n) / 2);
+    const agirliklar = Array.from({ length: this.yaprakSayisi }, (_, i) => {
+      if (i === kapanisIndex) return 5;
+      if (i > kapanisIndex) return 0.8;
+      return 1;
+    });
+    const toplamAgirlik = agirliklar.reduce((t, a) => t + a, 0);
+    this.ortalamaAdim = (SON - BAS) / toplamAgirlik;
+    const sinirlar: number[] = [BAS];
+    for (const a of agirliklar) sinirlar.push(sinirlar[sinirlar.length - 1] + a * this.ortalamaAdim);
+    // Fazladan ağırlık, yaprak çevrilmeden önceki beklemeye eklenir:
+    // kapanış yazısı sağ sayfada dururken yazılabilsin.
+    const beklemeler = agirliklar.map((a) => Math.max(0, a - 1) * this.ortalamaAdim);
+
     for (let i = 0; i < this.yaprakSayisi; i++) {
       const pivot = new THREE.Group();
       const kapakMi = i === 0;
@@ -95,8 +117,11 @@ export class Notebook {
         pivot,
         onYuz,
         arkaYuz,
-        p0: BAS + i * adim + adim * 0.12,
-        p1: BAS + i * adim + adim * 0.62,
+        bas: sinirlar[i],
+        son: sinirlar[i + 1],
+        // Çevirme süresi her yaprakta aynı; uzun duraklar sayfada beklemeye ayrılır.
+        p0: sinirlar[i] + beklemeler[i] + this.ortalamaAdim * 0.12,
+        p1: sinirlar[i] + beklemeler[i] + this.ortalamaAdim * 0.62,
         index: i
       };
       this.yapraklar.push(yaprak);
@@ -149,7 +174,7 @@ export class Notebook {
       this.fotoSayfasi(yaprak, hedef, memories[fotoIndex]);
       return;
     }
-    if (fotoIndex === n) this.kapanisSayfasi(hedef);
+    if (fotoIndex === n) this.kapanisSayfasi(yaprak, hedef);
   }
 
   /** Kapağın arkası: el yazısıyla başlık ve kısa bir not. */
@@ -212,30 +237,62 @@ export class Notebook {
     this.atilanlar.push(mesh.geometry, mat);
   }
 
-  /** Son sayfa: defterin bittiği yer değil, devam ettiği yer. */
-  private kapanisSayfasi(hedef: THREE.Group): void {
-    const doku = elYazisiDokusu([storyConfig.defter.kapanisBaslik], {
-      genislik: 1024,
-      yukseklik: 240,
-      fontBoyu: 112
+  /** Son yazılı sayfa: metin kalemle yazılıyormuş gibi harf harf belirir. */
+  private kapanisSayfasi(yaprak: Yaprak, hedef: THREE.Group): void {
+    this.kapanisYaprak = yaprak;
+    this.kapanisYazi = new YazanElYazisi(
+      [
+        { metin: storyConfig.defter.kapanisBaslik, fontBoyu: 108 },
+        {
+          metin: storyConfig.defter.kapanisMetin,
+          fontBoyu: 78,
+          renk: 'rgba(72, 64, 58, 0.88)',
+          ustBosluk: 58
+        }
+      ],
+      1320,
+      520
+    );
+    const mat = new THREE.MeshBasicMaterial({
+      map: this.kapanisYazi.doku,
+      transparent: true,
+      depthWrite: false
     });
-    const mat = new THREE.MeshBasicMaterial({ map: doku, transparent: true, depthWrite: false });
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.72, 0.4), mat);
-    mesh.position.set(0, 0.34, 0.002);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.96, 0.772), mat);
+    mesh.position.set(0, 0.16, 0.002);
     hedef.add(mesh);
     this.atilanlar.push(mesh.geometry, mat);
+  }
 
-    const alt = elYazisiDokusu([storyConfig.defter.kapanisMetin], {
-      genislik: 1100,
-      yukseklik: 340,
-      fontBoyu: 82,
-      renk: 'rgba(88, 78, 70, 0.82)'
-    });
-    const altMat = new THREE.MeshBasicMaterial({ map: alt, transparent: true, depthWrite: false });
-    const altMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 0.556), altMat);
-    altMesh.position.set(0, -0.24, 0.002);
-    hedef.add(altMesh);
-    this.atilanlar.push(altMesh.geometry, altMat);
+  /**
+   * Kapanış yazısının yazılışını sürer.
+   * Sayfa görünürken zamanla ilerler, sayfadan çıkılınca başa döner.
+   * Yeni beliren harf sayısını döndürür; ses buna göre çalınır.
+   */
+  kapanisYaziyiSur(p: number, dt: number, aninda: boolean): number {
+    if (!this.kapanisYazi || !this.kapanisYaprak) return 0;
+    const y = this.kapanisYaprak;
+    // Kapanış sayfası bu yaprağın ön yüzünde: yaprak çevrilene kadar sağ
+    // sayfada durur. Kamera oraya yerleştiğinde yazılmaya başlar.
+    const onceki = this.yapraklar[y.index - 1];
+    const baslangic = onceki ? onceki.son - this.ortalamaAdim * 0.12 : y.bas;
+    const gorunur = p >= baslangic && p <= y.p0 + 0.002;
+
+    if (!gorunur) {
+      if (this.kapanisT !== 0) {
+        this.kapanisT = 0;
+        this.kapanisYazi.ayarla(0);
+      }
+      return 0;
+    }
+    if (aninda) {
+      const yeni = this.kapanisYazi.ayarla(1);
+      this.kapanisT = 1;
+      return yeni;
+    }
+    // Yaklaşık 4,5 saniyede tamamlanır.
+    this.kapanisT = Math.min(1, this.kapanisT + dt / 4.5);
+    return this.kapanisYazi.ayarla(this.kapanisT);
   }
 
   /**
@@ -244,7 +301,13 @@ export class Notebook {
    */
   setIlerleme(p: number): void {
     const n = this.yaprakSayisi;
+    // Yalnızca açık sayfayı oluşturan birkaç yaprak çizilir; gerisini
+    // sol ve sağ yığın blokları temsil eder. Çizim çağrısı böylece sabit kalır.
+    const aktif = this.aktifYaprak(p).index;
     for (const y of this.yapraklar) {
+      const yakin = y.index >= aktif - 1 && y.index <= aktif + 1;
+      y.pivot.visible = yakin;
+      if (!yakin) continue;
       const t = clamp01((p - y.p0) / (y.p1 - y.p0));
       const e = easeInOutCubic(t);
       y.pivot.rotation.y = -Math.PI * e;
@@ -290,46 +353,60 @@ export class Notebook {
   /** Verilen ilerlemede sağ sayfadaki (odaktaki) fotoğrafın sırası. */
   odakSirasi(p: number): number {
     const n = memories.length;
-    const yaprak = clamp01((p - BAS) / (SON - BAS)) * this.yaprakSayisi;
+    const y = this.aktifYaprak(p);
     // Yaprak 0 kapak; sonraki her yaprak iki fotoğraf yüzü taşır.
-    const foto = Math.round((yaprak - 1) * 2);
+    const foto = (y.index - 1) * 2 + (p > y.p1 ? 1 : 0);
     return Math.max(0, Math.min(n - 1, foto));
   }
 
-  /** Bir fotoğrafın sayfası şu an görünür mü? */
+  /** Bir fotoğrafın sayfası görünür ya da görünmek üzere mi? */
   gorunurMu(foto: SayfaFotografi, p: number): boolean {
     const y = this.fotoYaprak.get(foto);
     if (!y) return false;
-    const t = clamp01((p - y.p0) / (y.p1 - y.p0));
-    return t > 0.001 && t < 0.999 ? true : Math.abs(p - (y.p0 + y.p1) / 2) < 0.14;
+    // Yaprağın arka yüzü, bir sonraki yaprağın adımı boyunca sol sayfada durur.
+    const pay = this.ortalamaAdim * 1.6;
+    const sonraki = this.yapraklar[y.index + 1];
+    const bitis = (sonraki ? sonraki.son : y.son) + pay;
+    return p >= y.bas - pay && p <= bitis;
   }
 
-  /** Adım içindeki yerel ilerleme (0-1). Kamera hareketi buna göre kurulur. */
-  private adimYereli(p: number): number {
-    const t = clamp01((p - BAS) / (SON - BAS)) * this.yaprakSayisi;
-    return ((t % 1) + 1) % 1;
+  /** O anda hangi yaprağın adımındayız? */
+  private aktifYaprak(p: number): Yaprak {
+    for (const y of this.yapraklar) {
+      if (p < y.son) return y;
+    }
+    return this.yapraklar[this.yapraklar.length - 1];
   }
 
   /**
    * Kameranın odaklanacağı yatay konum.
-   * Sağ sayfada başlar, sayfa çevrilirken sola kayar, sonra yeni sağ sayfaya
-   * yumuşakça döner. Adım sınırında sıçrama olmaz.
+   * Sağ sayfada başlar, sayfa çevrilirken sola kayar, adımın sonunda yeni sağ
+   * sayfaya yumuşakça döner. Uzun duraklarda sol sayfada bekler.
    */
   odakX(p: number): number {
-    const y = this.adimYereli(p);
+    const y = this.aktifYaprak(p);
+    const geri = this.ortalamaAdim * 0.18;
     let t: number;
-    if (y < 0.12) t = 0;
-    else if (y < 0.62) t = smootherstep((y - 0.12) / 0.5);
-    else if (y < 0.82) t = 1;
-    else t = 1 - smootherstep((y - 0.82) / 0.18);
+    if (p < y.p0) t = 0;
+    else if (p < y.p1) t = smootherstep((p - y.p0) / (y.p1 - y.p0));
+    else {
+      const geriBas = y.son - geri;
+      t = p < geriBas ? 1 : 1 - smootherstep((p - geriBas) / geri);
+    }
     return lerp(SAYFA_G / 2, -SAYFA_G / 2, t);
   }
 
   /** Sayfa çevrilirken kameranın geri çekilme miktarı. */
   cevirmeVurgusu(p: number): number {
-    const y = this.adimYereli(p);
-    if (y < 0.12 || y > 0.62) return 0;
-    return Math.sin(((y - 0.12) / 0.5) * Math.PI);
+    const y = this.aktifYaprak(p);
+    if (p < y.p0 || p > y.p1) return 0;
+    return Math.sin(((p - y.p0) / (y.p1 - y.p0)) * Math.PI);
+  }
+
+  /** Kapanış sayfası geçildikten sonra 0'dan 1'e çıkar; "başa dön" düğmesi için. */
+  kapanisSonrasi(p: number): number {
+    if (!this.kapanisYaprak) return 0;
+    return clamp01((p - this.kapanisYaprak.p1) / (this.ortalamaAdim * 0.6));
   }
 
   birak(): void {
