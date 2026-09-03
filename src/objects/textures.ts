@@ -645,8 +645,13 @@ export function kapakDokusu(baslik: string, altBaslik: string): THREE.CanvasText
   ctx.lineWidth = 2;
   ctx.strokeRect(m + 2.5, m + 2.5, g - m * 2, y - m * 2);
 
+  // Font geç yüklenince yazı yeniden çizilecek; zemini saklayıp geri koyarız,
+  // yoksa yazı üst üste binip bulanıklaşır.
+  const zemin = ctx.getImageData(0, 0, g, y);
+
   // Başlık: el yazısı, altın yaldız
   const yaz = (): void => {
+    ctx.putImageData(zemin, 0, 0);
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -702,11 +707,18 @@ export class YazanElYazisi {
   private g: number;
   private y: number;
   private satirlar: YazanSatir[];
-  private duzenCache: Array<{ metin: string; y: number; satir: YazanSatir }> | null = null;
-  private toplam = 0;
-  private sonGorunen = -1;
+  private duzenCache: Array<{
+    metin: string;
+    x: number;
+    y: number;
+    genislik: number;
+    satir: YazanSatir;
+  }> | null = null;
+  private toplamGenislik = 0;
+  private cizilenPiksel = -1;
+  private sonOran = 0;
 
-  constructor(satirlar: YazanSatir[], genislik = 1200, yukseklik = 520) {
+  constructor(satirlar: YazanSatir[], genislik = 1320, yukseklik = 520) {
     this.satirlar = satirlar;
     this.g = genislik;
     this.y = yukseklik;
@@ -719,19 +731,20 @@ export class YazanElYazisi {
     this.ciz(0);
     void elYazisiHazir.then(() => {
       this.duzenCache = null;
-      this.sonGorunen = -1;
+      this.cizilenPiksel = -1;
       this.ciz(this.sonOran);
     });
   }
-
-  private sonOran = 0;
 
   private font(s: YazanSatir): string {
     return `500 ${s.fontBoyu}px Caveat, "Segoe Script", "Bradley Hand", cursive`;
   }
 
-  /** Satırları tuvale sığacak biçimde böler ve dikey yerleşimi hesaplar. */
-  private duzen(): Array<{ metin: string; y: number; satir: YazanSatir }> {
+  /**
+   * Satırları böler ve her satırın sabit konumunu hesaplar.
+   * Konumlar önceden belirlendiği için yazı yazılırken harfler kaymaz.
+   */
+  private duzen(): NonNullable<typeof this.duzenCache> {
     if (this.duzenCache) return this.duzenCache;
     const enFazla = this.g * 0.94;
     const parcalar: Array<{ metin: string; satir: YazanSatir; ilk: boolean }> = [];
@@ -757,70 +770,109 @@ export class YazanElYazisi {
       if (mevcut) parcalar.push({ metin: mevcut, satir: s, ilk });
     }
 
-    // Dikey ortalama
     let toplamYukseklik = 0;
     parcalar.forEach((p2, i) => {
-      toplamYukseklik += p2.satir.fontBoyu * 1.18;
+      toplamYukseklik += p2.satir.fontBoyu * 1.2;
       if (i > 0 && p2.ilk) toplamYukseklik += p2.satir.ustBosluk ?? 0;
     });
 
     let imlec = this.y / 2 - toplamYukseklik / 2;
     const sonuc = parcalar.map((p2, i) => {
       if (i > 0 && p2.ilk) imlec += p2.satir.ustBosluk ?? 0;
-      imlec += p2.satir.fontBoyu * 1.18;
-      return { metin: p2.metin, y: imlec - p2.satir.fontBoyu * 0.42, satir: p2.satir };
+      imlec += p2.satir.fontBoyu * 1.2;
+      this.ctx.font = this.font(p2.satir);
+      const genislik = this.ctx.measureText(p2.metin).width;
+      return {
+        metin: p2.metin,
+        x: (this.g - genislik) / 2,
+        y: imlec - p2.satir.fontBoyu * 0.34,
+        genislik,
+        satir: p2.satir
+      };
     });
 
-    this.toplam = sonuc.reduce((t, p2) => t + p2.metin.length, 0);
+    this.toplamGenislik = sonuc.reduce((t, p2) => t + p2.genislik, 0);
     this.duzenCache = sonuc;
     return sonuc;
   }
 
-  get toplamKarakter(): number {
+  get toplamUzunluk(): number {
     this.duzen();
-    return this.toplam;
+    return this.toplamGenislik;
   }
 
+  /**
+   * Yazıyı kalem ucu gibi soldan sağa açar.
+   * Harfler yerinde durur; yalnızca görünen kısım genişler.
+   */
   private ciz(oran: number): void {
     const satirlar = this.duzen();
-    const gorunen = Math.round(clamp01(oran) * this.toplam);
-    if (gorunen === this.sonGorunen) return;
-    this.sonGorunen = gorunen;
+    const hedef = clamp01(oran) * this.toplamGenislik;
+    if (this.cizilenPiksel >= 0 && Math.abs(hedef - this.cizilenPiksel) < 1.2 && oran < 1) return;
+    this.cizilenPiksel = hedef;
 
     this.ctx.clearRect(0, 0, this.g, this.y);
-    this.ctx.textAlign = 'center';
+    this.ctx.textAlign = 'left';
     this.ctx.textBaseline = 'alphabetic';
 
-    let sayac = 0;
+    let biriken = 0;
     for (const s of satirlar) {
-      const kalan = gorunen - sayac;
-      if (kalan <= 0) break;
-      const metin = kalan >= s.metin.length ? s.metin : s.metin.slice(0, kalan);
-      sayac += s.metin.length;
+      if (biriken >= hedef) break;
+      const acik = Math.min(s.genislik, hedef - biriken);
+      const tam = acik >= s.genislik - 0.01;
 
       this.ctx.save();
-      this.ctx.translate(this.g / 2, s.y);
-      this.ctx.rotate(-0.016);
+      if (!tam) {
+        // Kalem ucunun geçtiği yere kadar açılan pencere
+        this.ctx.beginPath();
+        this.ctx.rect(
+          s.x - 4,
+          s.y - s.satir.fontBoyu * 1.05,
+          acik + 1.5,
+          s.satir.fontBoyu * 1.6
+        );
+        this.ctx.clip();
+      }
+      this.ctx.translate(s.x, s.y);
+      this.ctx.rotate(-0.014);
       this.ctx.font = this.font(s.satir);
-      // Mürekkebin kâğıda oturması: hafif kaymış soluk bir geçiş, üstüne asıl yazı
-      this.ctx.fillStyle = 'rgba(41, 52, 78, 0.3)';
-      this.ctx.fillText(metin, 1.5, 1.5);
+      // Mürekkebin kâğıda oturması: soluk bir alt geçiş, üstüne asıl yazı
+      this.ctx.fillStyle = 'rgba(41, 52, 78, 0.28)';
+      this.ctx.fillText(s.metin, 1.4, 1.4);
       this.ctx.fillStyle = s.satir.renk ?? 'rgba(31, 42, 68, 0.92)';
-      this.ctx.fillText(metin, 0, 0);
+      this.ctx.fillText(s.metin, 0, 0);
       this.ctx.restore();
+
+      // Kalem ucu: yalnızca yazılmakta olan satırda
+      if (!tam && acik > 1) {
+        this.ctx.save();
+        this.ctx.fillStyle = 'rgba(31, 42, 68, 0.5)';
+        this.ctx.beginPath();
+        this.ctx.arc(
+          s.x + acik,
+          s.y - s.satir.fontBoyu * 0.16,
+          s.satir.fontBoyu * 0.028,
+          0,
+          Math.PI * 2
+        );
+        this.ctx.fill();
+        this.ctx.restore();
+      }
+      biriken += s.genislik;
     }
     this.doku.needsUpdate = true;
   }
 
   /**
-   * Yazının ne kadarının göründüğünü ayarlar.
-   * Yeni beliren harf sayısını döndürür; ses buna göre tetiklenir.
+   * Yazının ne kadarının açıldığını ayarlar.
+   * Yeni açılan piksel miktarını döndürür; kalem sesi buna göre tetiklenir.
    */
   ayarla(oran: number): number {
-    const onceki = this.sonGorunen < 0 ? 0 : this.sonGorunen;
+    const onceki = this.cizilenPiksel < 0 ? 0 : this.cizilenPiksel;
     this.sonOran = clamp01(oran);
     this.ciz(this.sonOran);
-    return Math.max(0, this.sonGorunen - onceki);
+    return Math.max(0, this.cizilenPiksel - onceki);
   }
 }
+
 

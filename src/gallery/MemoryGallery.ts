@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { storyConfig } from '../config/storyConfig';
 import { memories } from '../config/memories';
-import { Notebook, SAYFA_G } from './Notebook';
+import { Notebook, SAYFA_G, SAYFA_Y } from './Notebook';
 import type { SayfaFotografi } from './SayfaFotografi';
 import { ParticleSystem } from '../objects/ParticleSystem';
 import { parlaklikDokusu } from '../objects/textures';
-import { damp, lerp, remapClamped, smootherstep } from '../animation/easing';
+import { damp, lerp, smootherstep } from '../animation/easing';
 import type { ResponsiveManager } from '../core/ResponsiveManager';
 
 export interface AcikKartBilgisi {
@@ -139,30 +139,39 @@ export class MemoryGallery {
     this.guncelle(0, 0.016, 0);
   }
 
-  /** Kamera konumu: sayfa çevrilirken hafifçe geri çekilip yeniden yaklaşır. */
+  /**
+   * Kamera konumu. Uzaklık, o anki görüş açısı ve ekran oranından hesaplanır:
+   * sayfa her ekranda tam sığar, sabit bir uzaklık varsayılmaz.
+   */
   private kamerayiKur(p: number, zaman: number): void {
     const mobil = this.ekran.durum.mobil;
     const az = this.ekran.azHareket;
     const vurgu = this.defter.cevirmeVurgusu(p);
-    const acilis = smootherstep(remapClamped(p, 0, 0.06, 0, 1));
-
-    // Kadraj: dikey telefonda sayfa genişliği, yatayda sayfa yüksekliği belirler.
-    const temelZ = mobil ? (this.ekran.durum.darKadraj ? 5.0 : 3.7) : 3.06;
-    const z = lerp(temelZ + 0.75, temelZ, acilis) + vurgu * (mobil ? 0.6 : 0.4);
-    // Kapak kapalıyken kadraj kapağın üstünde, açılınca sırt merkeze gelir.
     const kapakT = this.defter.kapakAcilmasi(p);
+
+    const yariFov = THREE.MathUtils.degToRad(this.kamera.fov) / 2;
+    // Kadraja sığması gereken ölçüler (paylar dâhil): dar ekranda tek sayfa,
+    // geniş ekranda açık iki sayfa. Uzaklık ikisinden büyüğüne göre seçilir.
+    const acikGenislik = mobil ? SAYFA_G * 1.1 : SAYFA_G * 2 * 1.06;
+    const hedefGenislik = lerp(SAYFA_G * 1.18, acikGenislik, kapakT);
+    const hedefYukseklik = SAYFA_Y * 1.19;
+    const zYukseklik = hedefYukseklik / 2 / Math.tan(yariFov);
+    const zGenislik = hedefGenislik / 2 / (Math.tan(yariFov) * this.kamera.aspect);
+    const temelZ = Math.max(zYukseklik, zGenislik);
+    const z = temelZ * (1 + vurgu * 0.07);
+
     const odak = this.defter.odakX(p);
-    const surus = mobil ? odak * 0.92 : odak * 0.34;
+    const surus = mobil ? odak * 0.92 : odak * 0.18;
     const x = lerp(SAYFA_G / 2, surus, kapakT);
-    const y = lerp(0.36, 0.1, acilis);
+    const y = lerp(0.24, 0.06, kapakT);
 
     const salinim = az ? 0 : 1;
     this.kamera.position.set(
-      x + Math.sin(zaman * 0.21) * 0.05 * salinim,
-      y + 0.06 + Math.sin(zaman * 0.17) * 0.035 * salinim,
+      x + Math.sin(zaman * 0.21) * 0.045 * salinim,
+      y + Math.sin(zaman * 0.17) * 0.03 * salinim,
       z
     );
-    this.gecici.set(lerp(SAYFA_G / 2, mobil ? odak * 0.96 : odak * 0.3, kapakT), -0.02, 0);
+    this.gecici.set(lerp(SAYFA_G / 2, mobil ? odak * 0.96 : odak * 0.16, kapakT), -0.02, 0);
     this.kamera.lookAt(this.gecici);
   }
 
@@ -201,10 +210,10 @@ export class MemoryGallery {
     }
 
     // Son sayfadaki yazı, sayfa görünürken kalem sesiyle birlikte yazılır.
-    const yeniHarf = this.defter.kapanisYaziyiSur(p, dt, this.ekran.azHareket);
-    if (yeniHarf > 0) {
-      this.harfSayaci += yeniHarf;
-      if (this.harfSayaci >= 2) {
+    const yeniPiksel = this.defter.kapanisYaziyiSur(p, dt, this.ekran.azHareket);
+    if (yeniPiksel > 0) {
+      this.harfSayaci += yeniPiksel;
+      if (this.harfSayaci >= 26) {
         this.harfSayaci = 0;
         this.kalemSesi?.();
       }

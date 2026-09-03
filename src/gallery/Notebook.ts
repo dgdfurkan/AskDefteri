@@ -7,7 +7,8 @@ import { clamp01, easeInOutCubic, lerp, smootherstep } from '../animation/easing
 
 export const SAYFA_G = 2.15;
 export const SAYFA_Y = 2.92;
-const YAPRAK_KALINLIK = 0.02;
+/** Defterin toplam kâğıt kalınlığı; yaprak başına düşen pay bundan hesaplanır. */
+const TOPLAM_KALINLIK = 0.16;
 /** Yaprakların döndüğü ilerleme aralığı */
 const BAS = 0.06;
 const SON = 0.955;
@@ -267,7 +268,7 @@ export class Notebook {
   /**
    * Kapanış yazısının yazılışını sürer.
    * Sayfa görünürken zamanla ilerler, sayfadan çıkılınca başa döner.
-   * Yeni beliren harf sayısını döndürür; ses buna göre çalınır.
+   * Yeni açılan piksel miktarını döndürür; kalem sesi buna göre çalınır.
    */
   kapanisYaziyiSur(p: number, dt: number, aninda: boolean): number {
     if (!this.kapanisYazi || !this.kapanisYaprak) return 0;
@@ -291,7 +292,7 @@ export class Notebook {
       return yeni;
     }
     // Yaklaşık 4,5 saniyede tamamlanır.
-    this.kapanisT = Math.min(1, this.kapanisT + dt / 4.5);
+    this.kapanisT = Math.min(1, this.kapanisT + dt / 3.8);
     return this.kapanisYazi.ayarla(this.kapanisT);
   }
 
@@ -313,11 +314,14 @@ export class Notebook {
       y.pivot.rotation.y = -Math.PI * e;
 
       // Yığın kalınlığı: çevrilmiş yapraklar solda, çevrilmemişler sağda birikir.
-      const cevrilmemisZ = YAPRAK_KALINLIK * (n - y.index);
-      const cevrilmisZ = YAPRAK_KALINLIK * (y.index + 1);
+      const kalinlik = TOPLAM_KALINLIK / n;
+      const cevrilmemisZ = kalinlik * (n - y.index);
+      const cevrilmisZ = kalinlik * (y.index + 1);
+      // Çizilen üç yaprak birbirine girmesin diye aralarına küçük bir pay konur.
+      const ayirma = -Math.abs(y.index - aktif) * 0.012;
       // Dönerken hafifçe yükselir: sayfanın kalkışını taklit eder.
       const kalkis = Math.sin(e * Math.PI) * 0.055;
-      y.pivot.position.z = lerp(cevrilmemisZ, cevrilmisZ, e) + kalkis;
+      y.pivot.position.z = lerp(cevrilmemisZ, cevrilmisZ, e) + kalkis + ayirma;
       y.pivot.rotation.z = Math.sin(e * Math.PI) * 0.035;
 
       // Kapak biraz daha kalın durur.
@@ -330,8 +334,8 @@ export class Notebook {
 
     // Yığınların kalınlığı sayfa sayısına göre değişir.
     const cevrilen = this.yapraklar.filter((y) => p > (y.p0 + y.p1) / 2).length;
-    const solKalinlik = Math.max(0.02, cevrilen * YAPRAK_KALINLIK * 0.9);
-    const sagKalinlik = Math.max(0.02, (n - cevrilen) * YAPRAK_KALINLIK * 0.9);
+    const solKalinlik = Math.max(0.02, (cevrilen * TOPLAM_KALINLIK) / n);
+    const sagKalinlik = Math.max(0.02, ((n - cevrilen) * TOPLAM_KALINLIK) / n);
     this.solYigin.scale.z = solKalinlik / 0.1;
     this.solYigin.position.z = solKalinlik / 2 - 0.11;
     this.sagYigin.scale.z = sagKalinlik / 0.1;

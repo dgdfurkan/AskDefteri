@@ -395,29 +395,48 @@ html.kaydirma-kilitli body {
   filter: blur(3px);
 }
 
+/* Final cümleleri altyazı hizasında durur; karakterlerin önünü kapatmaz. */
 .final {
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(7vh + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 14px;
+  gap: 12px;
   padding: 0 26px;
   visibility: hidden;
 }
 
 .final-satir {
+  position: relative;
   margin: 0;
-  max-width: 20ch;
+  max-width: 22ch;
   font-family: var(--serif);
-  font-size: clamp(1.4rem, 5.4vw, 2.2rem);
+  font-size: clamp(1.3rem, 4.6vw, 1.95rem);
   font-weight: 300;
   font-style: italic;
-  line-height: 1.32;
+  line-height: 1.3;
   text-align: center;
-  text-shadow: var(--golge);
+  color: #f8f4f0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9), 0 2px 12px rgba(0, 0, 0, 0.7);
   opacity: 0;
+}
+
+.final-satir::before {
+  content: '';
+  position: absolute;
+  inset: -0.75em -2.4em;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(
+    58% 100% at 50% 50%,
+    rgba(0, 0, 0, 0.7) 0%,
+    rgba(0, 0, 0, 0.45) 46%,
+    rgba(0, 0, 0, 0) 76%
+  );
+  filter: blur(3px);
 }
 
 .davet,
@@ -705,7 +724,8 @@ html.kaydirma-kilitli body {
 @media (max-height: 480px) and (orientation: landscape) {
   .altyazi { bottom: calc(7vh + env(safe-area-inset-bottom)); }
   .altyazi-satir { font-size: clamp(1rem, 3.4vh, 1.4rem); }
-  .final-satir { font-size: clamp(1.1rem, 4vh, 1.6rem); }
+  .final-satir { font-size: clamp(1rem, 3.6vh, 1.4rem); }
+  .final { bottom: calc(5vh + env(safe-area-inset-bottom)); gap: 8px; }
   .kilit-kart { padding: 18px 22px; }
   .kilit-aciklama { margin-bottom: 16px; }
   .defter-baslik { font-size: clamp(1.6rem, 7vh, 2.4rem); }
