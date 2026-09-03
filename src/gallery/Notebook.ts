@@ -10,8 +10,11 @@ export const SAYFA_Y = 2.92;
 /** Defterin toplam kâğıt kalınlığı; yaprak başına düşen pay bundan hesaplanır. */
 const TOPLAM_KALINLIK = 0.16;
 /** Yaprakların döndüğü ilerleme aralığı */
-const BAS = 0.06;
-const SON = 0.955;
+const BAS = 0.012;
+const SON = 0.93;
+/** Defterin kapandığı son bölüm */
+const KAPANMA_BAS = SON;
+const KAPANMA_SON = 0.985;
 
 interface Yaprak {
   pivot: THREE.Group;
@@ -52,8 +55,8 @@ export class Notebook {
   constructor(golgeler: boolean) {
     const n = memories.length;
     // Yüz sırası: 0 kapak, 1 iç kapak, 2..n+1 fotoğraflar, sonuncusu kapanış.
-    // 0 kapak, 1 iç kapak, 2..n+1 fotoğraflar, n+2 kapanış, sonrası boş sayfa.
-    const yuzSayisi = 2 + n + 1 + 4;
+    // 0 kapak, 1 iç kapak, 2..n+1 fotoğraflar, n+2 kapanış yazısı.
+    const yuzSayisi = 2 + n + 1;
     this.yaprakSayisi = Math.ceil(yuzSayisi / 2);
 
     const kagit = kagitDokusu();
@@ -81,11 +84,9 @@ export class Notebook {
     // Yapraklara ağırlık verilir: kapanış sayfası, yazısı yazılabilsin diye
     // normal bir sayfadan çok daha uzun durur.
     const kapanisIndex = Math.floor((2 + n) / 2);
-    const agirliklar = Array.from({ length: this.yaprakSayisi }, (_, i) => {
-      if (i === kapanisIndex) return 5;
-      if (i > kapanisIndex) return 0.8;
-      return 1;
-    });
+    const agirliklar = Array.from({ length: this.yaprakSayisi }, (_, i) =>
+      i === kapanisIndex ? 5 : 1
+    );
     const toplamAgirlik = agirliklar.reduce((t, a) => t + a, 0);
     this.ortalamaAdim = (SON - BAS) / toplamAgirlik;
     const sinirlar: number[] = [BAS];
@@ -302,6 +303,34 @@ export class Notebook {
    */
   setIlerleme(p: number): void {
     const n = this.yaprakSayisi;
+    const kapanma = this.kapanmaIlerlemesi(p);
+
+    // Son bölüm: çevrilmiş yaprakların tamamı kapakla birlikte geri kapanır.
+    // Yarıya kadar en üstteki sayfanın arkası, yarıdan sonra kapağın dış yüzü
+    // kameraya bakar; tam dik açıda değiştiği için geçiş görünmez.
+    if (kapanma > 0.001) {
+      const aci = -Math.PI * (1 - kapanma);
+      const kapakGoster = kapanma > 0.5;
+      const gosterilen = kapakGoster ? this.yapraklar[0] : this.yapraklar[n - 1];
+      for (const y of this.yapraklar) y.pivot.visible = false;
+      gosterilen.pivot.visible = true;
+      gosterilen.pivot.rotation.set(0, aci, 0);
+      gosterilen.pivot.position.z = TOPLAM_KALINLIK + 0.03;
+      gosterilen.onYuz.visible = kapakGoster;
+      gosterilen.arkaYuz.visible = !kapakGoster;
+
+      const sol = TOPLAM_KALINLIK * (1 - kapanma);
+      const sag = TOPLAM_KALINLIK * kapanma;
+      this.solYigin.visible = kapanma < 0.75;
+      this.solYigin.scale.z = Math.max(0.02, sol) / 0.1;
+      this.solYigin.position.z = sol / 2 - 0.11;
+      this.sagYigin.visible = true;
+      this.sagYigin.scale.z = Math.max(0.02, sag) / 0.1;
+      this.sagYigin.position.z = sag / 2 - 0.11;
+      this.sirt.visible = true;
+      return;
+    }
+
     // Yalnızca açık sayfayı oluşturan birkaç yaprak çizilir; gerisini
     // sol ve sağ yığın blokları temsil eder. Çizim çağrısı böylece sabit kalır.
     const aktif = this.aktifYaprak(p).index;
@@ -348,10 +377,16 @@ export class Notebook {
 
   }
 
-  /** Kapağın açılma oranı: kamera kadrajı buna göre kayar. */
+  /** Defterin sonunda kapağın geri kapanma oranı. */
+  kapanmaIlerlemesi(p: number): number {
+    return smootherstep(clamp01((p - KAPANMA_BAS) / (KAPANMA_SON - KAPANMA_BAS)));
+  }
+
+  /** Kapağın açıklık oranı: sonda kapanırken tekrar sıfıra iner. */
   kapakAcilmasi(p: number): number {
     const y = this.yapraklar[0];
-    return easeInOutCubic(clamp01((p - y.p0) / (y.p1 - y.p0)));
+    const acilis = easeInOutCubic(clamp01((p - y.p0) / (y.p1 - y.p0)));
+    return acilis * (1 - this.kapanmaIlerlemesi(p));
   }
 
   /** Verilen ilerlemede sağ sayfadaki (odaktaki) fotoğrafın sırası. */
@@ -409,8 +444,7 @@ export class Notebook {
 
   /** Kapanış sayfası geçildikten sonra 0'dan 1'e çıkar; "başa dön" düğmesi için. */
   kapanisSonrasi(p: number): number {
-    if (!this.kapanisYaprak) return 0;
-    return clamp01((p - this.kapanisYaprak.p1) / (this.ortalamaAdim * 0.6));
+    return clamp01((this.kapanmaIlerlemesi(p) - 0.55) / 0.35);
   }
 
   birak(): void {
